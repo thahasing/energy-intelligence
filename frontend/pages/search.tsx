@@ -46,7 +46,7 @@ export default function SearchPage() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['search', params],
     queryFn: () => searchProjects(params),
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   })
 
   const totalPages = data ? Math.ceil(data.total / 12) : 1

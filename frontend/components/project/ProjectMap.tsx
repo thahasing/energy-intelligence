@@ -26,7 +26,7 @@ export default function ProjectMap({ latitude, longitude, projectName, projectTy
     const initMap = async () => {
       try {
         const L = (await import('leaflet')).default
-        await import('leaflet/dist/leaflet.css')
+        
 
         // Clean up if map already exists
         if (mapRef.current && (mapRef.current as any)._leaflet_id) {

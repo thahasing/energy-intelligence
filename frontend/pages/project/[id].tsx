@@ -277,7 +277,7 @@ export default function ProjectDetailPage() {
                         )}
                       </div>
                       <div className="source-snippet">
-                        "{src.exact_snippet?.slice(0, 300)}{src.exact_snippet?.length > 300 ? '…' : ''}"
+                        "{src.exact_snippet?.slice(0, 300)}{(src.exact_snippet?.length ?? 0) > 300 ? '…' : ''}"
                       </div>
                     </div>
                   ))

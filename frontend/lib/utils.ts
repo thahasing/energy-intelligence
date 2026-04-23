@@ -57,20 +57,33 @@ export function getLifecycleBadge(stage: string | null | undefined): string {
   return badges[stage || ''] || 'badge-gray'
 }
 
-export const PROJECT_TYPE_CONFIG: Record<string,{label:string}> = {
+export const PROJECT_TYPE_CONFIG: Record<string,{label:string, step?:number}> = {
   solar: {label:'Solar'}, wind: {label:'Wind'}, battery: {label:'Battery'},
   hydro: {label:'Hydro'}, geothermal: {label:'Geothermal'},
-  hybrid: {label:'Hybrid'}, unknown: {label:'Unknown'}
+  hybrid: {label:'Hybrid'}, unknown: {label:'Unknown', step:0}
 }
 
-export const LIFECYCLE_CONFIG: Record<string,{label:string}> = {
-  planned: {label:'Planned'}, approved: {label:'Approved'},
-  under_construction: {label:'Under Construction'},
-  operational: {label:'Operational'}, unknown: {label:'Unknown'}
+export const LIFECYCLE_CONFIG: Record<string,{label:string, step:number}> = {
+  planned: {label:'Planned', step:0}, approved: {label:'Approved', step:1},
+  under_construction: {label:'Under Construction', step:2},
+  operational: {label:'Operational', step:3}, unknown: {label:'Unknown', step:0}
 }
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+export function confidenceColor(score: number | null | undefined): string {
+  if (!score) return 'var(--t3)'
+  if (score >= 0.8) return 'var(--g4)'
+  if (score >= 0.6) return '#f59e0b'
+  return '#ef4444'
+}
+
+export function confidenceLabel(score: number | null | undefined): string {
+  if (!score) return 'Unknown'
+  if (score >= 0.8) return 'High'
+  if (score >= 0.6) return 'Medium'
+  return 'Low'
 }

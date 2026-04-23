@@ -18,7 +18,7 @@ export default function MonitorPage() {
     queryKey: ['job-detail', selected],
     queryFn: () => getJobStatus(selected!),
     enabled: !!selected,
-    refetchInterval: (d) => d && ['done','failed'].includes(d.status) ? false : 2000,
+    refetchInterval: 2000,
   })
 
   const running = jobs?.filter((j: any) => j.status === 'running').length || 0

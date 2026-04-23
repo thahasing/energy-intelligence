@@ -40,7 +40,7 @@ export function SourceCitation({
   const [expanded, setExpanded] = React.useState(false)
 
   const copySnippet = async () => {
-    await navigator.clipboard.writeText(source.exact_snippet)
+    await navigator.clipboard.writeText(source.exact_snippet || "")
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -77,9 +77,9 @@ export function SourceCitation({
             L{source.line_start}–{source.line_end ?? source.line_start}
           </span>
         )}
-        {source.paragraph_number != null && (
+        {source.page_number != null && (
           <span className="text-xs font-mono text-white/40">
-            ¶{source.paragraph_number}
+            ¶{source.page_number}
           </span>
         )}
         <button
@@ -105,7 +105,7 @@ export function SourceCitation({
         <span className="text-brand-400/60 select-none">"</span>
       </div>
 
-      {source.exact_snippet.length > 200 && (
+      {(source.exact_snippet?.length ?? 0) > 200 && (
         <button
           onClick={() => setExpanded(!expanded)}
           className="w-full text-center py-1 text-xs text-white/30 hover:text-white/50 border-t border-brand-500/10"

@@ -37,7 +37,7 @@ export default function IngestPage() {
     queryKey: ['job', activeJob],
     queryFn: () => getJobStatus(activeJob!),
     enabled: !!activeJob,
-    refetchInterval: (d) => d && ['done','failed'].includes(d.status) ? false : 2000,
+    refetchInterval: 2000,
   })
 
   const ingestMutation = useMutation({
