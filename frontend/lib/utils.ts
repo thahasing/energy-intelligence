@@ -68,3 +68,9 @@ export const LIFECYCLE_CONFIG: Record<string,{label:string}> = {
   under_construction: {label:'Under Construction'},
   operational: {label:'Operational'}, unknown: {label:'Unknown'}
 }
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
