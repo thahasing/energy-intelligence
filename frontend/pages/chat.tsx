@@ -40,7 +40,7 @@ export default function ChatbotPage() {
     setMessages(newMessages)
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:8000/api/v1/chat', {
+      const res = await fetch('https://energy-intelligence-production.up.railway.app/api/v1/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages })
