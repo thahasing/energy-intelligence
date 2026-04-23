@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://energy-intelligence-production.up.railway.app'
+const API = "https://energy-intelligence-production.up.railway.app"
 
 export interface Project {
   id: string
