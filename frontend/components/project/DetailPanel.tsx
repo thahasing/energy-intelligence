@@ -275,7 +275,7 @@ export default function DetailPanel({ project: p, onClose }: Props) {
                           )}
                         </div>
                         <div className="source-snippet">
-                          "{src.exact_snippet?.slice(0, 180)}{src.exact_snippet?.length > 180 ? '…' : ''}"
+                          "{src.exact_snippet?.slice(0, 180)}{(src.exact_snippet?.length ?? 0) > 180 ? '…' : ''}"
                         </div>
                       </div>
                     ))
