@@ -509,3 +509,58 @@ async def add_project_source(project_id: UUID, request: dict, db: AsyncSession =
     db.add(sr)
     await db.commit()
     return {"status": "saved", "id": str(sr.id)}
+
+@router.post("/research/find-source", tags=["Research"])
+async def find_source_endpoint(request: dict):
+    import httpx, re, json, os
+    name = request.get('project_name', '')
+    company = (request.get('owner_company') or '').split(',')[0].strip()
+    state = request.get('state', '')
+    cap = request.get('capacity_mw', '')
+    ptype = request.get('project_type', '')
+    groq_key = os.environ.get('GROQ_API_KEY', '')
+    prompt = f"""Find the most relevant URL for this renewable energy project:
+Project: "{name}", Owner: "{company}", Capacity: {cap} MW, State: {state}, Type: {ptype}
+Return ONLY this JSON: {{"url":"https://...","title":"page title","source":"site name","snippet":"1 sentence about this project"}}
+If unknown return: {{"url":null}}"""
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 300},
+                timeout=15
+            )
+            text = r.json()["choices"][0]["message"]["content"].strip()
+            m = re.search(r'\{.*?\}', text, re.DOTALL)
+            if m:
+                return json.loads(m.group())
+    except Exception as e:
+        pass
+    return {"url": None}
+
+@router.post("/projects/{project_id}/sources", tags=["Projects"])
+async def add_project_source(project_id: UUID, request: dict, db: AsyncSession = Depends(get_db)):
+    from app.models.database import SourceReference, ExtractedField
+    import uuid as uuid_lib
+    ef_result = await db.execute(select(ExtractedField).where(ExtractedField.project_id == project_id).limit(1))
+    ef = ef_result.scalar_one_or_none()
+    project_result = await db.execute(select(Project).where(Project.id == project_id))
+    project = project_result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    url = request.get('url', '')
+    if not url:
+        raise HTTPException(status_code=400, detail="URL required")
+    existing = await db.execute(select(SourceReference).where(SourceReference.project_id == project_id, SourceReference.source_url == url).limit(1))
+    if existing.scalar_one_or_none():
+        return {"status": "already_exists"}
+    sr = SourceReference(
+        id=uuid_lib.uuid4(), project_id=project_id,
+        extracted_field_id=ef.id if ef else None,
+        document_id=project.document_id, source_url=url, page_number=1,
+        exact_snippet=f"{request.get('title','')}. {request.get('snippet','')}".strip()[:500],
+    )
+    db.add(sr)
+    await db.commit()
+    return {"status": "saved", "id": str(sr.id)}
