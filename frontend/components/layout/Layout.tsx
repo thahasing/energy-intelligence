@@ -3,9 +3,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 const NAV = [
-  { href: '/',       label: 'Dashboard',    icon: '⊞' },
-  { href: '/search', label: 'Search',       icon: '⌕' },
-  { href: '/chat',   label: 'AI Assistant', icon: '◈' },
+  { href: '/',        label: 'Dashboard',    icon: '⊞' },
+  { href: '/search',  label: 'Search',       icon: '⌕' },
+  { href: '/ingest',  label: 'Ingest',       icon: '↧' },
+  { href: '/monitor', label: 'Monitor',      icon: '↻' },
+  { href: '/chat',    label: 'AI Assistant', icon: '◈' },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -59,7 +61,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="main">
         <header className="topbar">
           <div className="topbar-title">
-            {router.pathname === '/' ? 'Dashboard' : router.pathname === '/search' ? 'Search Projects' : router.pathname === '/chat' ? 'AI Assistant' : 'EnergyIQ'}
+            {router.pathname === '/' ? 'Dashboard' :
+             router.pathname === '/search' ? 'Search Projects' :
+             router.pathname === '/ingest' ? 'Data Ingestion' :
+             router.pathname === '/monitor' ? 'Job Monitor' :
+             router.pathname === '/chat' ? 'AI Assistant' : 'EnergyIQ'}
           </div>
           <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
             {dark ? '☀️' : '🌙'}
