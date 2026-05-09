@@ -121,3 +121,55 @@ Return only the JSON array, nothing else."""
         return []
 
 
+
+async def run_ingestion_pipeline(db, job_id, query, max_documents=20, filing_types=None, date_from="2020-01-01"):
+    """Main pipeline function called by the API"""
+    import structlog
+    from app.models.database import IngestionJob
+    from sqlalchemy import select
+    logger = structlog.get_logger()
+    
+    if filing_types is None:
+        filing_types = ["8-K", "10-K"]
+    
+    try:
+        # Update job status to running
+        result = await db.execute(select(IngestionJob).where(IngestionJob.id == job_id))
+        job = result.scalar_one_or_none()
+        if job:
+            job.status = "running"
+            await db.commit()
+        
+        # Search EDGAR
+        filings = await search_edgar(query, max_results=max_documents, filing_types=filing_types, date_from=date_from)
+        logger.info("edgar_results", count=len(filings))
+        
+        projects_found = 0
+        async with httpx.AsyncClient() as client:
+            for filing in filings:
+                text, doc_url = await fetch_text(filing.get("index_url", ""))
+                if not text or len(text) < 300:
+                    continue
+                projects = extract_with_ollama(text, filing.get("name", ""))
+                for p in projects:
+                    name = (p.get("project_name") or "").strip()
+                    ptype = (p.get("project_type") or "").lower()
+                    if not name or ptype not in ["solar", "wind", "battery", "hydro"]:
+                        continue
+                    projects_found += 1
+        
+        # Update job as completed
+        if job:
+            job.status = "completed"
+            job.projects_found = projects_found
+            await db.commit()
+            
+    except Exception as e:
+        logger.error("pipeline_error", error=str(e))
+        try:
+            if job:
+                job.status = "failed"
+                job.error_message = str(e)[:500]
+                await db.commit()
+        except:
+            pass

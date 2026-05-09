@@ -18,7 +18,7 @@ from app.models.schemas import (
     ProjectResponse, ProjectListResponse, IngestRequest, IngestResponse,
     JobStatusResponse, CompareResponse, SearchParams, DocumentSchema
 )
-from app.services.ingestion_pipeline import IngestionPipeline
+from app.services.ingestion_pipeline import run_ingestion_pipeline
 from app.services.project_differentiator import ProjectDifferentiationEngine
 
 logger = structlog.get_logger(__name__)
@@ -54,15 +54,13 @@ async def trigger_ingestion(
 
     async def run_pipeline_job():
         async with AsyncSessionLocal() as task_db:
-            pipeline = IngestionPipeline()
-            await pipeline.run(
+            await run_ingestion_pipeline(
                 db=task_db,
                 job_id=job.id,
                 query=request.query,
                 max_documents=request.max_documents,
                 filing_types=request.filing_types,
                 date_from=request.date_from or "2020-01-01",
-                date_to=request.date_to,
             )
 
     # Run pipeline in background with its own DB session.
