@@ -73,182 +73,51 @@ async def fetch_text(index_url):
             return "", ""
 
 def extract_with_ollama(text, company):
-    try:
-        import ollama
-        prompt = f"""Extract renewable energy projects from this SEC filing by {company}.
-Return ONLY a JSON array. Each item must have:
-project_name, project_type (solar/wind/battery/hydro), owner_company,
-city, state, capacity_mw (number or null), lifecycle_stage (planned/approved/under_construction/operational),
-environmental_approval (true/false/null), grid_connection_approval (true/false/null),
-financing_secured (true/false/null)
+    """Extract projects using Groq LLM instead of Ollama"""
+    import httpx, json, os
+    groq_key = os.environ.get("GROQ_API_KEY", "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")
+    prompt = f"""Extract renewable energy projects from this SEC filing by {company}.
+Return ONLY a valid JSON array with no extra text. Each item must have these exact fields:
+- project_name: string (specific project name, not company name)
+- project_type: string (must be one of: solar, wind, battery, hydro)
+- owner_company: string
+- state: string (2-letter US state code or country name)
+- capacity_mw: number or null
+- lifecycle_stage: string (one of: planned, approved, under_construction, operational)
+- environmental_approval: boolean
+- grid_connection_approval: boolean
+- financing_secured: boolean
 
-If no projects found return [].
-Text: {text[:4000]}"""
-        r = ollama.chat(model="llama3.2", messages=[{"role":"user","content":prompt}])
-        raw = r["message"]["content"]
-        start, end = raw.find("["), raw.rfind("]")+1
-        if start >= 0 and end > start:
-            return json.loads(raw[start:end])
-        return []
-    except Exception as e:
-        logger.error("ollama_error", error=str(e))
-        return []
+Only include real renewable energy projects with specific names mentioned in the text.
+If no projects found, return empty array [].
 
-async def run_ingestion(db, job_id, query, max_documents=20, filing_types=None, date_from="2020-01-01"):
-    from app.models.database import Document, ExtractedField, Project, SourceReference, IngestionJob
-    from app.services.geolocation import GeoLocationService
-    from datetime import datetime
+SEC Filing text:
+{text[:4000]}
 
-    # Update job status
-    job = await db.get(IngestionJob, job_id)
-    if job:
-        job.status = "running"
-        job.started_at = datetime.utcnow()
-        await db.commit()
+Return only the JSON array, nothing else."""
 
     try:
-        filings = await search_edgar(query, max_documents, filing_types, date_from)
-        
-        if job:
-            job.total_documents = len(filings)
-            await db.commit()
-
-        projects_found = 0
-        geocoder = GeoLocationService()
-        for i, filing in enumerate(filings):
-            text, doc_url = await fetch_text(filing["index_url"])
-            if not text:
-                if job:
-                    job.processed_documents = i + 1
-                    await db.commit()
-                continue
-
-            document = None
-            existing_doc = await db.execute(select(Document).where(Document.url == (doc_url or filing["index_url"])))
-            document = existing_doc.scalar_one_or_none()
-            if not document:
-                filed_date = None
-                if filing.get("filed_date"):
-                    try:
-                        filed_date = datetime.fromisoformat(filing["filed_date"][:10]).date()
-                    except ValueError:
-                        filed_date = None
-                document = Document(
-                    id=uuid.uuid4(),
-                    url=doc_url or filing["index_url"],
-                    filing_type=filing.get("form"),
-                    company_name=filing.get("name"),
-                    cik=filing.get("cik"),
-                    accession_number=filing.get("adsh"),
-                    filed_date=filed_date,
-                    raw_text=text,
-                    status="processed",
-                    processed_at=datetime.utcnow(),
-                )
-                db.add(document)
-                await db.flush()
-
-            projects = extract_with_ollama(text, filing["name"])
-            
-            for proj in projects:
-                if not proj.get("project_name"):
-                    continue
-                try:
-                    state = str(proj.get("state") or "").strip() or None
-                    city = str(proj.get("city") or "").strip() or None
-                    lat = proj.get("latitude")
-                    lon = proj.get("longitude")
-                    loc_conf = 1.0 if lat is not None and lon is not None else 0.0
-                    if lat is None or lon is None:
-                        lat, lon, loc_conf = await geocoder.geocode(
-                            city=city,
-                            state=state,
-                            country="USA",
-                            project_name=str(proj.get("project_name") or ""),
-                        )
-
-                    p = Project(
-                        id=uuid.uuid4(),
-                        project_name=str(proj.get("project_name") or filing["name"])[:200],
-                        project_name_normalized=str(proj.get("project_name") or filing["name"]).lower().strip()[:200],
-                        project_type=str(proj.get("project_type") or "unknown").lower(),
-                        owner_company=str(proj.get("owner_company") or filing["name"]),
-                        city=city,
-                        state=state,
-                        country="USA",
-                        latitude=float(lat) if lat is not None else None,
-                        longitude=float(lon) if lon is not None else None,
-                        location_confidence=loc_conf,
-                        capacity_mw=float(proj["capacity_mw"]) if proj.get("capacity_mw") else None,
-                        lifecycle_stage=str(proj.get("lifecycle_stage") or "unknown").lower(),
-                        environmental_approval=proj.get("environmental_approval"),
-                        grid_connection_approval=proj.get("grid_connection_approval"),
-                        financing_secured=proj.get("financing_secured"),
-                        document_id=document.id,
-                        overall_confidence=0.75,
-                    )
-                    db.add(p)
-                    await db.flush()
-
-                    snippet = str(proj.get("source_text") or proj.get("source_snippet") or text[:300])
-                    field_values = {
-                        "project_name": p.project_name,
-                        "project_type": p.project_type,
-                        "location": ", ".join(part for part in [p.city, p.state, p.country] if part),
-                        "capacity_mw": str(p.capacity_mw) if p.capacity_mw is not None else None,
-                    }
-                    for field_name, field_value in field_values.items():
-                        if not field_value:
-                            continue
-                        ef = ExtractedField(
-                            id=uuid.uuid4(),
-                            project_id=p.id,
-                            field_name=field_name,
-                            field_value=field_value,
-                            confidence_score=0.75,
-                            extraction_method="ollama",
-                        )
-                        db.add(ef)
-                        await db.flush()
-                        db.add(SourceReference(
-                            id=uuid.uuid4(),
-                            extracted_field_id=ef.id,
-                            project_id=p.id,
-                            document_id=document.id,
-                            source_url=filing["index_url"],
-                            exact_snippet=snippet[:500],
-                            snippet_context=snippet[:1000],
-                        ))
-
-                    await db.commit()
-                    projects_found += 1
-                    logger.info("project_saved", name=p.project_name, type=p.project_type)
-                except Exception as e:
-                    logger.error("save_error", error=str(e))
-                    await db.rollback()
-
-            if job:
-                job.processed_documents = i + 1
-                job.projects_found = projects_found
-                await db.commit()
-
-        if job:
-            job.status = "done"
-            job.projects_found = projects_found
-            from datetime import datetime
-            job.completed_at = datetime.utcnow()
-            await db.commit()
-
-        return projects_found
-
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+            json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 2000},
+            timeout=30
+        )
+        result = r.json()
+        raw = result["choices"][0]["message"]["content"].strip()
+        # Clean up markdown code blocks if present
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+        projects = json.loads(raw)
+        if isinstance(projects, list):
+            return projects
+        return []
     except Exception as e:
-        if job:
-            job.status = "failed"
-            job.error_message = str(e)
-            await db.commit()
-        raise e
+        import structlog
+        structlog.get_logger().error("groq_error", error=str(e))
+        return []
 
 
-class IngestionPipeline:
-    async def run(self, db, job_id, query, max_documents=20, filing_types=None, date_from="2020-01-01", date_to=None, **kwargs):
-        return await run_ingestion(db, job_id, query, max_documents, filing_types, date_from)
