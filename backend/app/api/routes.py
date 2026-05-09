@@ -463,53 +463,6 @@ async def get_project_detail(project_id: str, db: AsyncSession = Depends(get_db)
         "extracted_fields": extracted_fields,
     }
 
-@router.post("/projects/{project_id}/sources", tags=["Projects"])
-async def add_project_source(project_id: UUID, request: dict, db: AsyncSession = Depends(get_db)):
-    """Add a source reference to a project"""
-    from app.models.database import SourceReference, ExtractedField
-    import uuid as uuid_lib
-    
-    # Get existing extracted field
-    ef_result = await db.execute(
-        select(ExtractedField).where(ExtractedField.project_id == project_id).limit(1)
-    )
-    ef = ef_result.scalar_one_or_none()
-    
-    project_result = await db.execute(select(Project).where(Project.id == project_id))
-    project = project_result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    url = request.get('url', '')
-    title = request.get('title', '')
-    snippet = request.get('snippet', '')
-    
-    if not url:
-        raise HTTPException(status_code=400, detail="URL required")
-    
-    # Check if already exists
-    existing = await db.execute(
-        select(SourceReference).where(
-            SourceReference.project_id == project_id,
-            SourceReference.source_url == url
-        ).limit(1)
-    )
-    if existing.scalar_one_or_none():
-        return {"status": "already_exists"}
-    
-    sr = SourceReference(
-        id=uuid_lib.uuid4(),
-        project_id=project_id,
-        extracted_field_id=ef.id if ef else None,
-        document_id=project.document_id,
-        source_url=url,
-        page_number=1,
-        exact_snippet=f"{title}. {snippet}".strip()[:500],
-    )
-    db.add(sr)
-    await db.commit()
-    return {"status": "saved", "id": str(sr.id)}
-
 @router.post("/research/find-source", tags=["Research"])
 async def find_source_endpoint(request: dict):
     import httpx, re, json, os
