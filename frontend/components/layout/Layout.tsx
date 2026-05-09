@@ -3,12 +3,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 const NAV = [
-  { href: '/',          label: 'Dashboard',    icon: '⊞' },
-  { href: '/search',    label: 'Search',       icon: '⌕' },
-  { href: '/ingest',    label: 'Ingest',       icon: '↧' },
-  { href: '/research',  label: 'AI Research',  icon: '◎' },
-  { href: '/monitor',   label: 'Monitor',      icon: '↻' },
-  { href: '/chat',      label: 'AI Assistant', icon: '◈' },
+  { href: '/',         label: 'Dashboard',   icon: '⊞' },
+  { href: '/search',   label: 'Search',      icon: '⌕' },
+  { href: '/ingest',   label: 'Ingest',      icon: '↧' },
+  { href: '/research', label: 'AI Research', icon: '◎' },
+  { href: '/monitor',  label: 'Monitor',     icon: '↻' },
+  { href: '/chat',     label: 'Assistant',   icon: '◈' },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -29,6 +29,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     localStorage.setItem('theme', next ? 'dark' : 'light')
   }
 
+  const titles: Record<string,string> = {
+    '/': 'Dashboard', '/search': 'Search Projects', '/ingest': 'Data Ingestion',
+    '/research': 'AI Source Research', '/monitor': 'Job Monitor', '/chat': 'AI Assistant'
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -39,39 +44,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </svg>
           </div>
           <div>
-            <div className="logo-text">Energy<span style={{ color:'var(--blue)' }}>IQ</span></div>
+            <div className="logo-text">Energy<span style={{color:'var(--blue)'}}>IQ</span></div>
             <div className="logo-sub">Intelligence Engine</div>
           </div>
         </div>
         <nav className="nav">
-          {NAV.map(({ href, label, icon }) => (
-            <Link key={href} href={href} className={`nav-item ${router.pathname === href ? 'active' : ''}`}>
-              <span style={{ fontSize:15, width:18, textAlign:'center' }}>{icon}</span>
+          {NAV.map(({href,label,icon}) => (
+            <Link key={href} href={href} className={`nav-item ${router.pathname===href?'active':''}`}>
+              <span style={{fontSize:15,width:18,textAlign:'center'}}>{icon}</span>
               {label}
             </Link>
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="live-pill">
-            <span className="pulse-dot" />
-            Live · EIA + SEC EDGAR
-          </div>
-          <div style={{ marginTop:5, fontSize:10, color:'var(--t4)', fontFamily:'var(--font-mono)' }}>v2.0.0</div>
+          <div className="live-pill"><span className="pulse-dot"/>Live · EIA + SEC EDGAR</div>
+          <div style={{marginTop:5,fontSize:10,color:'var(--t4)',fontFamily:'var(--font-mono)'}}>v2.0.0</div>
         </div>
       </aside>
       <div className="main">
         <header className="topbar">
-          <div className="topbar-title">
-            {router.pathname === '/' ? 'Dashboard' :
-             router.pathname === '/search' ? 'Search Projects' :
-             router.pathname === '/ingest' ? 'Data Ingestion' :
-             router.pathname === '/research' ? 'AI Source Research' :
-             router.pathname === '/monitor' ? 'Job Monitor' :
-             router.pathname === '/chat' ? 'AI Assistant' : 'EnergyIQ'}
-          </div>
-          <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
-            {dark ? '☀️' : '🌙'}
-          </button>
+          <div className="topbar-title">{titles[router.pathname]||'EnergyIQ'}</div>
+          <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">{dark?'☀️':'🌙'}</button>
         </header>
         <main className="content">{children}</main>
       </div>
