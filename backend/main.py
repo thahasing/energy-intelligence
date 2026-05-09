@@ -75,3 +75,49 @@ async def root():
         "docs": "/docs",
         "api": "/api/v1",
     }
+
+@app.post("/api/v1/research/find-source")
+async def find_source(request: dict):
+    """Use Groq to find real source URL for a project"""
+    import httpx
+    name = request.get('project_name', '')
+    company = (request.get('owner_company') or '').split(',')[0].strip()
+    state = request.get('state', '')
+    cap = request.get('capacity_mw', '')
+    ptype = request.get('project_type', '')
+    
+    groq_key = os.environ.get('GROQ_API_KEY', '')
+    
+    prompt = f"""Search the web and find the most relevant official URL for this renewable energy project:
+
+Project: "{name}"
+Owner: "{company}"
+Capacity: {cap} MW
+State: {state}
+Type: {ptype}
+
+Based on your knowledge, what is the most likely URL for the official project page, press release, or news article about this specific project?
+
+Return ONLY this JSON object:
+{{"url": "https://...", "title": "page title", "source": "website name", "snippet": "1 sentence about this project from that page"}}
+
+If you don't know a specific URL, return: {{"url": null}}"""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 500},
+                timeout=15
+            )
+            data = r.json()
+            text = data["choices"][0]["message"]["content"].strip()
+            import re, json
+            m = re.search(r'\{.*?\}', text, re.DOTALL)
+            if m:
+                result = json.loads(m.group())
+                return result
+    except Exception as e:
+        pass
+    return {"url": None}
