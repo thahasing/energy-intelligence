@@ -31,7 +31,7 @@ export default function ResearchPage() {
   })
   const projects = data?.results || []
 
-  async function findSource(p: any) {
+  async function findAndSave(p: any) {
     const r = await fetch(`${API}/api/v1/research/find-source`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -43,7 +43,16 @@ export default function ResearchPage() {
         project_type: p.project_type,
       })
     })
-    return await r.json()
+    const found = await r.json()
+    if (found?.url) {
+      await fetch(`${API}/api/v1/projects/${p.id}/sources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: found.url, title: found.title || '', snippet: found.snippet || '' })
+      })
+      setSaved(s => s + 1)
+    }
+    return found
   }
 
   async function run() {
@@ -60,20 +69,18 @@ export default function ResearchPage() {
       setProgress(`Searching ${i + 1} / ${projects.length}: ${p.project_name}`)
       setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'searching' } : r))
       try {
-        const found = await findSource(p)
+        const found = await findAndSave(p)
         setResults(prev => prev.map((r, idx) => idx === i ? {
           ...r, url: found?.url || null, title: found?.title || '',
           source: found?.source || '', snippet: found?.snippet || '',
           status: found?.url ? 'found' : 'not_found'
         } : r))
-        if (found?.url) setSaved(s => s + 1)
       } catch {
         setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'error' } : r))
       }
       await new Promise(r => setTimeout(r, 500))
     }
-
-    setProgress(`Complete!`)
+    setProgress(`Complete! Found ${results.filter(r => r.status === 'found').length} sources. Check the Sources tab on any project!`)
     setRunning(false)
   }
 
@@ -86,12 +93,12 @@ export default function ResearchPage() {
       <div style={{ maxWidth: 820, margin: '0 auto' }}>
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--tw)', letterSpacing: '-.02em', marginBottom: 6 }}>AI Source Research</div>
-          <div style={{ fontSize: 13, color: 'var(--t3)' }}>Uses Groq AI to find real press releases, project pages, and news articles for each project.</div>
+          <div style={{ fontSize: 13, color: 'var(--t3)' }}>Uses Groq AI to find real press releases and project pages. Found sources are automatically saved to each project's Sources tab.</div>
         </div>
 
         {results.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-            {[['Total', results.length, 'var(--tw)'], ['Searched', done, 'var(--blue)'], ['Found', foundCount, '#16a34a'], ['Saved', saved, '#7c3aed']].map(([l, v, c]: any) => (
+            {[['Total', results.length, 'var(--tw)'], ['Searched', done, 'var(--blue)'], ['Found', foundCount, '#16a34a'], ['Saved to DB', saved, '#7c3aed']].map(([l, v, c]: any) => (
               <div key={l} className="stat-card" style={{ padding: 14 }}>
                 <div className="stat-label">{l}</div>
                 <div className="stat-val" style={{ fontSize: 24, color: c }}>{v}</div>
@@ -104,10 +111,10 @@ export default function ResearchPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tw)', marginBottom: 4 }}>{projects.length} projects ready</div>
-              <div style={{ fontSize: 12, color: 'var(--t3)' }}>{progress || 'Click start to find real source documents for all projects'}</div>
+              <div style={{ fontSize: 12, color: 'var(--t3)' }}>{progress || 'Click start — found sources will automatically appear in each project\'s Sources tab'}</div>
             </div>
             <button onClick={run} disabled={running || !projects.length} className="btn-primary" style={{ flexShrink: 0, padding: '10px 24px', fontSize: 13 }}>
-              {running ? '⏳ Researching...' : '🔍 Start AI Research'}
+              {running ? '⏳ Researching...' : '🔍 Start Research'}
             </button>
           </div>
           {running && done > 0 && (
@@ -132,23 +139,21 @@ export default function ResearchPage() {
             const sc = colors[r.status]
             return (
               <div key={i} className="card" style={{ padding: '12px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: r.url ? 6 : 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tw)', flex: 1 }}>{r.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>{r.cap}MW · {r.state}</div>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 700, background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, flexShrink: 0 }}>
-                        {r.status === 'searching' ? '⏳ searching' : r.status === 'found' ? '✓ found' : r.status === 'not_found' ? '✗ not found' : r.status === 'error' ? '! error' : '○ pending'}
-                      </span>
-                    </div>
-                    {r.url && (
-                      <>
-                        <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none', display: 'block', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.url}</a>
-                        <div style={{ fontSize: 11, color: 'var(--t3)' }}><span style={{ fontWeight: 600 }}>{r.source}</span>{r.title ? ` — ${r.title}` : ''}</div>
-                        {r.snippet && <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 3, fontStyle: 'italic' }}>"{r.snippet.slice(0, 200)}"</div>}
-                      </>
-                    )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: r.url ? 6 : 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tw)', flex: 1 }}>{r.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>{r.cap}MW · {r.state}</div>
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 700, background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, flexShrink: 0 }}>
+                      {r.status === 'searching' ? '⏳ searching' : r.status === 'found' ? '✓ found & saved' : r.status === 'not_found' ? '✗ not found' : r.status === 'error' ? '! error' : '○ pending'}
+                    </span>
                   </div>
+                  {r.url && (
+                    <>
+                      <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none', display: 'block', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.url}</a>
+                      <div style={{ fontSize: 11, color: 'var(--t3)' }}><span style={{ fontWeight: 600 }}>{r.source}</span>{r.title ? ` — ${r.title}` : ''}</div>
+                      {r.snippet && <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 3, fontStyle: 'italic' }}>"{r.snippet.slice(0, 200)}"</div>}
+                    </>
+                  )}
                 </div>
               </div>
             )
