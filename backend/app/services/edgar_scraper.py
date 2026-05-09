@@ -20,8 +20,8 @@ class EdgarScraper:
         if filing_types is None:
             filing_types = ["10-K", "8-K", "S-1"]
 
-        forms = "%2C".join(filing_types)
-        url = f"{self.base}?q={query}&dateRange=custom&startdt={date_from}&forms={forms}&from=0"
+        forms_params = "&".join([f"forms={ft}" for ft in filing_types])
+        url = f"{self.base}?q={query}&dateRange=custom&startdt={date_from}&{forms_params}&from=0"
         
         logger.info("edgar_search", query=query, url=url)
 
