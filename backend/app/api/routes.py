@@ -463,29 +463,35 @@ async def get_project_detail(project_id: str, db: AsyncSession = Depends(get_db)
 
 @router.post("/research/find-source", tags=["Research"])
 async def find_source_endpoint(request: dict):
-    import httpx, re, json, os
+    import httpx, os
     name = request.get('project_name', '')
     company = (request.get('owner_company') or '').split(',')[0].strip()
     state = request.get('state', '')
     cap = request.get('capacity_mw', '')
     ptype = request.get('project_type', '')
-    groq_key = os.environ.get('GROQ_API_KEY', '')
-    prompt = f"""Find the most relevant URL for this renewable energy project:
-Project: "{name}", Owner: "{company}", Capacity: {cap} MW, State: {state}, Type: {ptype}
-Return ONLY this JSON: {{"url":"https://...","title":"page title","source":"site name","snippet":"1 sentence about this project"}}
-If unknown return: {{"url":null}}"""
+    serper_key = os.environ.get('SERPER_API_KEY', '27d3bfd42d31eb13d0ab89a2c8bc5b735171c24b')
+    query = f"{name} {company} {ptype} energy project {state} MW"
     try:
         async with httpx.AsyncClient() as client:
             r = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-                json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 300},
-                timeout=15
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
+                json={"q": query, "num": 5},
+                timeout=10
             )
-            text = r.json()["choices"][0]["message"]["content"].strip()
-            m = re.search(r'\{.*?\}', text, re.DOTALL)
-            if m:
-                return json.loads(m.group())
+            data = r.json()
+            results = data.get("organic", [])
+            skip = ["wikipedia.org", "eia.gov", "sec.gov", "google.com", "youtube.com"]
+            for res in results:
+                link = res.get("link", "")
+                if any(s in link for s in skip):
+                    continue
+                return {
+                    "url": link,
+                    "title": res.get("title", ""),
+                    "source": link.split("/")[2].replace("www.", ""),
+                    "snippet": res.get("snippet", "")
+                }
     except Exception as e:
         pass
     return {"url": None}
