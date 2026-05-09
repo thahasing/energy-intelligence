@@ -102,6 +102,37 @@ class EdgarScraper:
                 logger.error("fetch_doc_error", error=str(e), url=filing.get("index_url", ""))
                 return ""
 
+    async def fetch_document_html(self, index_url: str) -> tuple[str, str]:
+        """Fetch the filing index and return the main document HTML and its URL"""
+        async with httpx.AsyncClient(headers=self.headers, timeout=60, follow_redirects=True) as client:
+            try:
+                # First get the index page to find the main document
+                r = await client.get(index_url)
+                soup = BeautifulSoup(r.text, "lxml")
+                
+                # Find the main document link (10-K, 8-K etc)
+                doc_url = ""
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    if any(href.endswith(ext) for ext in [".htm", ".html", ".txt"]):
+                        if not any(x in href.lower() for x in ["ex-", "exhibit", "xsd", "xml"]):
+                            doc_url = self.filing_base + href if href.startswith("/") else href
+                            break
+                
+                if not doc_url:
+                    return "", ""
+                
+                logger.info("fetching_document_html", url=doc_url)
+                
+                # Fetch the actual document HTML
+                r2 = await client.get(doc_url)
+                
+                return r2.text, doc_url
+                
+            except Exception as e:
+                logger.error("fetch_html_error", error=str(e), url=index_url)
+                return "", ""
+
 RENEWABLE_KEYWORDS = [
     'solar energy project',
     'wind farm energy project',

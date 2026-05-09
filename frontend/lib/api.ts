@@ -1,4 +1,6 @@
-const API = "https://energy-intelligence-production.up.railway.app"
+const API = process.env.NODE_ENV === "development"
+  ? "http://localhost:8000"
+  : "https://energy-intelligence-production.up.railway.app"
 
 export interface Project {
   id: string

@@ -5,6 +5,7 @@ import json
 import uuid
 from bs4 import BeautifulSoup
 import structlog
+from sqlalchemy import select
 
 logger = structlog.get_logger()
 
@@ -14,10 +15,18 @@ async def search_edgar(query, max_results=20, filing_types=None, date_from="2020
     if filing_types is None:
         filing_types = ["10-K", "8-K", "S-1"]
     forms = ",".join(filing_types)
-    url = f"https://efts.sec.gov/LATEST/search-index?q={query}&dateRange=custom&startdt={date_from}&forms={forms}&from=0"
+    params = {
+        "q": query,
+        "dateRange": "custom",
+        "startdt": date_from,
+        "forms": forms,
+        "from": 0,
+    }
+    url = "https://efts.sec.gov/LATEST/search-index"
     logger.info("edgar_search", query=query, url=url)
     async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
-        r = await client.get(url)
+        r = await client.get(url, params=params)
+        r.raise_for_status()
         hits = r.json().get("hits", {}).get("hits", [])
         logger.info("edgar_page", fetched=len(hits))
         results = []
@@ -30,7 +39,14 @@ async def search_edgar(query, max_results=20, filing_types=None, date_from="2020
             name = names[0].split("(")[0].strip() if names else "Unknown"
             adsh_path = adsh.replace("-", "")
             index_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{adsh_path}/{adsh}-index.htm"
-            results.append({"name": name, "cik": cik, "adsh": adsh, "form": src.get("form",""), "index_url": index_url})
+            results.append({
+                "name": name,
+                "cik": cik,
+                "adsh": adsh,
+                "form": src.get("form",""),
+                "filed_date": src.get("file_date") or src.get("filedAt"),
+                "index_url": index_url,
+            })
         return results
 
 async def fetch_text(index_url):
@@ -79,7 +95,8 @@ Text: {text[:4000]}"""
         return []
 
 async def run_ingestion(db, job_id, query, max_documents=20, filing_types=None, date_from="2020-01-01"):
-    from app.models.database import Project, IngestionJob
+    from app.models.database import Document, ExtractedField, Project, SourceReference, IngestionJob
+    from app.services.geolocation import GeoLocationService
     from datetime import datetime
 
     # Update job status
@@ -97,6 +114,7 @@ async def run_ingestion(db, job_id, query, max_documents=20, filing_types=None, 
             await db.commit()
 
         projects_found = 0
+        geocoder = GeoLocationService()
         for i, filing in enumerate(filings):
             text, doc_url = await fetch_text(filing["index_url"])
             if not text:
@@ -105,28 +123,103 @@ async def run_ingestion(db, job_id, query, max_documents=20, filing_types=None, 
                     await db.commit()
                 continue
 
+            document = None
+            existing_doc = await db.execute(select(Document).where(Document.url == (doc_url or filing["index_url"])))
+            document = existing_doc.scalar_one_or_none()
+            if not document:
+                filed_date = None
+                if filing.get("filed_date"):
+                    try:
+                        filed_date = datetime.fromisoformat(filing["filed_date"][:10]).date()
+                    except ValueError:
+                        filed_date = None
+                document = Document(
+                    id=uuid.uuid4(),
+                    url=doc_url or filing["index_url"],
+                    filing_type=filing.get("form"),
+                    company_name=filing.get("name"),
+                    cik=filing.get("cik"),
+                    accession_number=filing.get("adsh"),
+                    filed_date=filed_date,
+                    raw_text=text,
+                    status="processed",
+                    processed_at=datetime.utcnow(),
+                )
+                db.add(document)
+                await db.flush()
+
             projects = extract_with_ollama(text, filing["name"])
             
             for proj in projects:
                 if not proj.get("project_name"):
                     continue
                 try:
+                    state = str(proj.get("state") or "").strip() or None
+                    city = str(proj.get("city") or "").strip() or None
+                    lat = proj.get("latitude")
+                    lon = proj.get("longitude")
+                    loc_conf = 1.0 if lat is not None and lon is not None else 0.0
+                    if lat is None or lon is None:
+                        lat, lon, loc_conf = await geocoder.geocode(
+                            city=city,
+                            state=state,
+                            country="USA",
+                            project_name=str(proj.get("project_name") or ""),
+                        )
+
                     p = Project(
                         id=uuid.uuid4(),
                         project_name=str(proj.get("project_name") or filing["name"])[:200],
+                        project_name_normalized=str(proj.get("project_name") or filing["name"]).lower().strip()[:200],
                         project_type=str(proj.get("project_type") or "unknown").lower(),
                         owner_company=str(proj.get("owner_company") or filing["name"]),
-                        city=str(proj.get("city") or "") or None,
-                        state=str(proj.get("state") or "") or None,
+                        city=city,
+                        state=state,
                         country="USA",
+                        latitude=float(lat) if lat is not None else None,
+                        longitude=float(lon) if lon is not None else None,
+                        location_confidence=loc_conf,
                         capacity_mw=float(proj["capacity_mw"]) if proj.get("capacity_mw") else None,
                         lifecycle_stage=str(proj.get("lifecycle_stage") or "unknown").lower(),
                         environmental_approval=proj.get("environmental_approval"),
                         grid_connection_approval=proj.get("grid_connection_approval"),
                         financing_secured=proj.get("financing_secured"),
+                        document_id=document.id,
                         overall_confidence=0.75,
                     )
                     db.add(p)
+                    await db.flush()
+
+                    snippet = str(proj.get("source_text") or proj.get("source_snippet") or text[:300])
+                    field_values = {
+                        "project_name": p.project_name,
+                        "project_type": p.project_type,
+                        "location": ", ".join(part for part in [p.city, p.state, p.country] if part),
+                        "capacity_mw": str(p.capacity_mw) if p.capacity_mw is not None else None,
+                    }
+                    for field_name, field_value in field_values.items():
+                        if not field_value:
+                            continue
+                        ef = ExtractedField(
+                            id=uuid.uuid4(),
+                            project_id=p.id,
+                            field_name=field_name,
+                            field_value=field_value,
+                            confidence_score=0.75,
+                            extraction_method="ollama",
+                        )
+                        db.add(ef)
+                        await db.flush()
+                        db.add(SourceReference(
+                            id=uuid.uuid4(),
+                            extracted_field_id=ef.id,
+                            project_id=p.id,
+                            document_id=document.id,
+                            source_url=filing["index_url"],
+                            exact_snippet=snippet[:500],
+                            snippet_context=snippet[:1000],
+                        ))
+
                     await db.commit()
                     projects_found += 1
                     logger.info("project_saved", name=p.project_name, type=p.project_type)

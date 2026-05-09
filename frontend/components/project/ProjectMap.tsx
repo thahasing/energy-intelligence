@@ -7,10 +7,11 @@ interface ProjectMapProps {
   longitude: number
   projectName: string
   projectType?: string | null
+  projectId?: string
 }
 
 // Dynamic import of Leaflet to avoid SSR issues
-export default function ProjectMap({ latitude, longitude, projectName, projectType }: ProjectMapProps) {
+export default function ProjectMap({ latitude, longitude, projectName, projectType, projectId }: ProjectMapProps) {
   const mapRef = React.useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = React.useState(false)
 
@@ -80,6 +81,7 @@ export default function ProjectMap({ latitude, longitude, projectName, projectTy
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #e2e8e4;">
               <strong style="color: ${color}; font-family: Inter, sans-serif;">${projectName}</strong><br/>
               <span style="color: #9ca3af; font-size: 11px;">${latitude.toFixed(4)}, ${longitude.toFixed(4)}</span>
+              ${projectId ? `<br/><a href="/project/${projectId}" style="display:inline-block;margin-top:6px;color:${color};text-decoration:none;font-family:Inter,sans-serif;font-weight:600;">Open project</a>` : ''}
             </div>
           `)
           .openPopup()
@@ -113,7 +115,7 @@ export default function ProjectMap({ latitude, longitude, projectName, projectTy
         try { map.remove() } catch {}
       }
     }
-  }, [mounted, latitude, longitude, projectName, projectType])
+  }, [mounted, latitude, longitude, projectName, projectType, projectId])
 
   if (!mounted) {
     return (

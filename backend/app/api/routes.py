@@ -13,7 +13,7 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import selectinload
 import structlog
 
-from app.models.database import get_db, Project, Document, ExtractedField, SourceReference, IngestionJob
+from app.models.database import AsyncSessionLocal, get_db, Project, Document, ExtractedField, SourceReference, IngestionJob
 from app.models.schemas import (
     ProjectResponse, ProjectListResponse, IngestRequest, IngestResponse,
     JobStatusResponse, CompareResponse, SearchParams, DocumentSchema
@@ -52,18 +52,21 @@ async def trigger_ingestion(
     await db.commit()
     await db.refresh(job)
 
-    # Run pipeline in background
-    pipeline = IngestionPipeline()
-    background_tasks.add_task(
-        pipeline.run,
-        db=db,
-        job_id=job.id,
-        query=request.query,
-        max_documents=request.max_documents,
-        filing_types=request.filing_types,
-        date_from=request.date_from or "2020-01-01",
-        date_to=request.date_to,
-    )
+    async def run_pipeline_job():
+        async with AsyncSessionLocal() as task_db:
+            pipeline = IngestionPipeline()
+            await pipeline.run(
+                db=task_db,
+                job_id=job.id,
+                query=request.query,
+                max_documents=request.max_documents,
+                filing_types=request.filing_types,
+                date_from=request.date_from or "2020-01-01",
+                date_to=request.date_to,
+            )
+
+    # Run pipeline in background with its own DB session.
+    background_tasks.add_task(run_pipeline_job)
 
     logger.info("ingestion_triggered", job_id=str(job.id), query=request.query)
     return IngestResponse(
