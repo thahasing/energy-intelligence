@@ -75,7 +75,7 @@ async def fetch_text(index_url):
 def extract_with_ollama(text, company):
     """Extract projects using Groq LLM instead of Ollama"""
     import httpx, json, os
-    groq_key = os.environ.get("GROQ_API_KEY", "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")
+    groq_key = os.environ.get("GROQ_API_KEY", "")
     prompt = f"""Extract renewable energy projects from this SEC filing by {company}.
 Return ONLY a valid JSON array with no extra text. Each item must have these exact fields:
 - project_name: string (specific project name, not company name)
