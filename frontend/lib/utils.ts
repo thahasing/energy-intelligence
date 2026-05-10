@@ -35,8 +35,8 @@ export function locationString(p: any): string {
 
 export function getTypeIcon(type: string | null | undefined): string {
   const icons: Record<string,string> = {
-    solar: '🔆', wind: '🌬️', battery: '🔌',
-    hydro: '🌊', geothermal: '🌋', hybrid: '⚡', unknown: '⚡'
+    solar: '☀️', wind: '💨', battery: '🔋',
+    hydro: '💧', geothermal: '🌋', hybrid: '⚡', unknown: '⚡'
   }
   return icons[type || 'unknown'] || '⚡'
 }
