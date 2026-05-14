@@ -27,7 +27,7 @@ export default function ResearchPage() {
 
   const { data } = useQuery({
     queryKey: ['all-projects-research'],
-    queryFn: () => searchProjects({ page: 1, page_size: 100 }),
+    queryFn: () => searchProjects({ page: 1, page_size: 2500 }),
   })
   const projects = data?.results || []
 
