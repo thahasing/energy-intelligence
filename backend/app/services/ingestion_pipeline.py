@@ -179,18 +179,27 @@ async def run_ingestion_pipeline(db, job_id, query, max_documents=20, filing_typ
                     continue
 
                 # Save document
-                doc = Document(
-                    id=uuid_lib.uuid4(),
-                    url=doc_url,
-                    filing_type=filing.get("form", "8-K"),
-                    company_name=filing.get("name", ""),
-                    cik=filing.get("cik", ""),
-                    accession_number=filing.get("adsh", ""),
-                    raw_text=text[:2000],
-                    status="processed",
-                )
-                db.add(doc)
-                await db.flush()
+                # Check if document already exists
+from sqlalchemy import select as sa_select
+existing_doc = await db.execute(
+    sa_select(Document).where(Document.url == doc_url).limit(1)
+)
+existing_doc = existing_doc.scalar_one_or_none()
+if existing_doc:
+    doc = existing_doc
+else:
+    doc = Document(
+        id=uuid_lib.uuid4(),
+        url=doc_url,
+        filing_type=filing.get("form", "8-K"),
+        company_name=filing.get("name", ""),
+        cik=filing.get("cik", ""),
+        accession_number=filing.get("adsh", ""),
+        raw_text=text[:2000],
+        status="processed",
+    )
+    db.add(doc)
+    await db.flush()
 
                 # Save project
                 cap = p.get("capacity_mw")
