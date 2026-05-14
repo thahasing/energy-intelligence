@@ -57,8 +57,13 @@ async def fetch_text(index_url):
             doc_url = ""
             for a in soup.find_all("a", href=True):
                 href = a["href"]
-                if any(href.endswith(x) for x in [".htm", ".html", ".txt"]):
-                    if not any(x in href.lower() for x in ["ex-", "exhibit", "xsd", "xml"]):
+                if "Archives/edgar/data" not in href:
+                    continue
+                if any(href.endswith(x) for x in [".htm", ".html"]):
+                    fname = href.split("/")[-1].lower()
+                    if not any(x in fname for x in ["ex", "exhibit", "xsd", "xml", "r1.", "r2.", "r3."]):
+                        if "ix?doc=" in href:
+                            href = href.split("ix?doc=")[1]
                         doc_url = "https://www.sec.gov" + href if href.startswith("/") else href
                         break
             if not doc_url:
@@ -75,7 +80,7 @@ async def fetch_text(index_url):
 def extract_with_ollama(text, company):
     """Extract projects using Groq LLM instead of Ollama"""
     import httpx, json, os
-    groq_key = os.environ.get("GROQ_API_KEY", "")
+    groq_key = os.environ.get("GROQ_API_KEY", "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")
     prompt = f"""Extract renewable energy projects from this SEC filing by {company}.
 Return ONLY a valid JSON array with no extra text. Each item must have these exact fields:
 - project_name: string (specific project name, not company name)
